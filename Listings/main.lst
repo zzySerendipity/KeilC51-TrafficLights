@@ -1,0 +1,306 @@
+C51 COMPILER V9.60.7.0   MAIN                                                              05/24/2025 22:04:12 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main.l
+                    -st) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <REGX51.H>
+   2          #include "Delay.h"
+   3          #define uchar   unsigned char
+   4          #define uint    unsigned int
+   5          
+   6          sbit    EW_LED2   = P2^3;               // EW_LED2
+   7          sbit    EW_LED1   = P2^2;               // EW_LED1
+   8          sbit    SN_LED2   = P2^1;               // SN_LED2
+   9          sbit    SN_LED1   = P2^0;               // SN_LED1
+  10          sbit    SN_Yellow = P1^6;               // 南北主干道 黄灯
+  11          sbit    SN_Red    = P1^7;       // 南北主干道 红灯
+  12          sbit    EW_Yellow = P1^2;               // 东西次干道 黄灯
+  13          sbit    EW_Red    = P1^3;       // 东西次干道 红灯
+  14          
+  15          sbit    Mode      = P3^2;               // 模式引脚开关
+  16          sbit    ALTER     = P2^5;               // 道路切换 引脚开关
+  17          sbit    TimeInc   = P2^6;               // 时间+1按键
+  18          sbit    TimeDec   = P2^7;               // 时间-1按键
+  19          
+  20          sbit    Debug     = P2^4;               // Debug LED 1亮0灭
+  21          
+  22          bit     Flag_SN_Yellow;     // 南北主干道 黄灯 标志位
+  23          bit     Flag_EW_Yellow;     // 东西次干道 黄灯 标志位
+  24          bit             Emergency_Flag;                 
+  25          bit     TimeSetting_Flag;                       
+  26          char    Time_SN;                        // 南北主干道 计时时间
+  27          char    Time_EW;                        // 东西次干道 计时时间
+  28          
+  29          // 默认某条路的红灯时间和绿灯时间相等，仅可调整某条路的计时时间
+  30          uchar EW = 5,SN = 5;                                    // SN EW 道路计时默认时间10s 变量:受用户控制
+  31          uchar EW_Init = 2,SN_Init = 2;                  // 初始状态 计时3s进入系统    
+  32          
+  33          // 交通信号灯时间 用于数码管P0指示
+  34          uchar code table[10]={0xc0,0xf9,0xa4,0xb0,0x99,0x92,0x82,0xf8,0x80,0x90};               // 0~~~~9段选
+  35          
+  36          // 交通信号灯控制 用于信号灯P1指示
+  37          /* S[0]: 南北道路通行
+  38           * S[1]：南北道路黄灯
+  39           * S[4]: 东西道路通行
+  40           * S[5]: 东西道路黄灯
+  41           * S[8]: 两条道路均为红灯 初态 + Emengency状态
+  42           * S[9]: Emergency 红灯黄灯全亮                */
+  43          uchar code S[10]={0x28,0x48,0x18,0x48,0x82,0x84,0x81,0x84,0x88,0xCC};   
+  44          
+  45          // 串口接收
+  46          bit UART_Update = 0;
+  47          uchar UART_Data;
+  48          
+  49          // 数码管动态显示
+  50          // 根据当前时刻的Time_EW Time_SN输出四路交通灯显示模块
+  51          void Display(int Time) {
+  52   1              int high,low;
+  53   1              
+  54   1              high = Time/10;
+C51 COMPILER V9.60.7.0   MAIN                                                              05/24/2025 22:04:12 PAGE 2   
+
+  55   1              low = Time%10;
+  56   1              
+  57   1          P0 = table[low];
+  58   1              EW_LED2 = 1;
+  59   1              Delay(1);
+  60   1              EW_LED2 = 0;
+  61   1          P0 = table[high];
+  62   1              EW_LED1 = 1;
+  63   1              Delay(1);
+  64   1              EW_LED1 = 0;
+  65   1      
+  66   1              high = Time/10;
+  67   1              low = Time%10;
+  68   1              
+  69   1              P0 = table[low];
+  70   1              SN_LED2 = 1;
+  71   1              Delay(1);
+  72   1              SN_LED2 = 0;
+  73   1          P0 = table[high];
+  74   1              SN_LED1 = 1;
+  75   1              Delay(1);
+  76   1              SN_LED1 = 0;
+  77   1      } 
+  78          void Display_TimeSetting(int Main, int Sub){
+  79   1              int high,low;
+  80   1              
+  81   1              high = Sub/10;
+  82   1              low = Sub%10;
+  83   1              
+  84   1          P0 = table[low];
+  85   1              EW_LED2 = 1;
+  86   1              Delay(1);
+  87   1              EW_LED2 = 0;
+  88   1          P0 = table[high];
+  89   1              EW_LED1 = 1;
+  90   1              Delay(1);
+  91   1              EW_LED1 = 0;
+  92   1      
+  93   1              high = Main/10;
+  94   1              low = Main%10;
+  95   1              
+  96   1              P0 = table[low];
+  97   1              SN_LED2 = 1;
+  98   1              Delay(1);
+  99   1              SN_LED2 = 0;
+ 100   1          P0 = table[high];
+ 101   1              SN_LED1 = 1;
+ 102   1              Delay(1);
+ 103   1              SN_LED1 = 0;
+ 104   1      }
+ 105          
+ 106          void Init() {
+ 107   1          TMOD= 0x01;                                 // TIEMR Mode 1
+ 108   1              TH0 = (65536-50000)/256;        // 约0.050s
+ 109   1              TL0 = (65536-50000)%256;
+ 110   1              ET0 = 1;                                        // 定时中断
+ 111   1          
+ 112   1              IP   |= 0x01;                           // 中断优先级 INT0 > TIMER0
+ 113   1              IT0 = 1;                                        // 下降沿
+ 114   1              EX0 = 1;                                        // 允许外部中断0
+ 115   1              EA  = 1;                                        // 中断总允许
+ 116   1              
+C51 COMPILER V9.60.7.0   MAIN                                                              05/24/2025 22:04:12 PAGE 3   
+
+ 117   1              TR0 = 1;                                        // 启动定时 
+ 118   1              
+ 119   1              Time_EW = EW_Init;
+ 120   1              Time_SN = SN_Init;      
+ 121   1              Emergency_Flag = 0;
+ 122   1              TimeSetting_Flag = 0;
+ 123   1              
+ 124   1          // UART初始化（波特率9600）
+ 125   1          SCON = 0x50;        // 模式1，允许接收
+ 126   1          TMOD |= 0x20;       // 定时器1模式2
+ 127   1          TH1 = 0xFD;         // 9600@11.0592MHz
+ 128   1          TL1 = 0xFD;
+ 129   1          TR1 = 1;            // 启动定时器1
+ 130   1          ES = 1;             // 允许串口中断
+ 131   1      }
+ 132                  
+ 133          void main()
+ 134          { 
+ 135   1              Init();
+ 136   1              Debug = 0;
+ 137   1              // 3s进入 交通灯系统
+ 138   1              while((Time_SN >= 0) || (Time_EW >= 0))
+ 139   1              { 
+ 140   2                      Flag_EW_Yellow = 0;                     // EW 关黄灯显示信号
+ 141   2                      Flag_SN_Yellow = 0;                     // SN 关黄灯显示信号
+ 142   2                      P1 = S[8];                                      // 初态: 所有路口红灯
+ 143   2                      Display(Time_SN);                       // 显示初态的3s倒计时
+ 144   2              }
+ 145   1              while(1)                         
+ 146   1              {
+ 147   2                      
+ 148   2              // 紧急状态处理（保持全红）
+ 149   2              if(Emergency_Flag) {
+ 150   3                  P1 = S[9];                  // Emergency状态
+ 151   3                  // Flag_SN_Yellow = 0;
+ 152   3                  // Flag_EW_Yellow = 0;
+ 153   3                  Display(Time_SN);           // 显示当前冻结时间
+ 154   3                  continue;                   // 跳过正常流程
+ 155   3              }
+ 156   2                      // 修改时间（等待本轮结束后才可以调整时间）
+ 157   2                      else if(Emergency_Flag == 0 && TimeSetting_Flag){
+ 158   3                              P1 = 0x00;                                      // 交通灯全灭
+ 159   3                              Flag_EW_Yellow = 0;                     // EW 关黄灯显示信号
+ 160   3                              Flag_SN_Yellow = 0;                     // SN 关黄灯显示信号
+ 161   3                              TimeInc = 1;                            // +1 -1 按键重置
+ 162   3                              TimeDec = 1;
+ 163   3                              Time_EW = EW;           
+ 164   3                              Time_SN = SN;
+ 165   3                              if(ALTER){              // 修改 南北主干道 时间
+ 166   4                                      if(TimeInc == 0){
+ 167   5                                              Delay(10);while(TimeInc==0);Delay(10);SN += 1;
+ 168   5                                      }
+ 169   4                                      if(TimeDec == 0){
+ 170   5                                              Delay(10);while(TimeDec==0);Delay(10);SN -= 1;
+ 171   5                                      }
+ 172   4                              }
+ 173   3                              else{                   // 修改 东西次干道 时间
+ 174   4                                      if(TimeInc == 0){
+ 175   5                                              Delay(10);while(TimeInc==0);Delay(10);EW += 1;
+ 176   5                                      }
+ 177   4                                      if(TimeDec == 0){
+ 178   5                                              Delay(10);while(TimeDec==0);Delay(10);EW -= 1;
+C51 COMPILER V9.60.7.0   MAIN                                                              05/24/2025 22:04:12 PAGE 4   
+
+ 179   5                                      }                               
+ 180   4                              }
+ 181   3                              Display_TimeSetting(SN, EW);
+ 182   3                      }
+ 183   2                      
+ 184   2                      // 正常运行状态 
+ 185   2                      else{
+ 186   3                              Time_SN = SN;
+ 187   3                              Time_EW = EW;   
+ 188   3                              
+ 189   3                              while(Time_SN >= 4) { 
+ 190   4                                      Flag_EW_Yellow = 0;             //EW关黄灯显示信号
+ 191   4                                      P1 = S[0];                              //SN通行，EW红灯
+ 192   4                                      Display(Time_SN);
+ 193   4                              }
+ 194   3                              P1 = 0x00;
+ 195   3                              while(Time_SN >= 0) {
+ 196   4                                      Flag_SN_Yellow = 1;             //SN开黄灯信号位
+ 197   4                                      EW_Red = 1;                     //SN黄灯亮,等待左转信号，EW红灯
+ 198   4                                      Display(Time_SN);
+ 199   4                              }
+ 200   3                              Time_SN = SN;
+ 201   3                              Time_EW = EW;   
+ 202   3                              while(Time_EW >= 4) {
+ 203   4                                      Flag_SN_Yellow = 0;     //SN关黄灯显示信号                         
+ 204   4                                      P1 = S[4];                              //EW通行，SN红灯
+ 205   4                                      Display(Time_EW);
+ 206   4                              }
+ 207   3                              P1 = 0x00;
+ 208   3                              while(Time_EW >= 0) {
+ 209   4                                      Flag_EW_Yellow = 1;             //EW开黄灯信号位
+ 210   4                                      SN_Red = 1;                             //EW黄灯亮，等待左拐信号，SN红灯   
+ 211   4                                      Display(Time_EW);
+ 212   4                              }                               
+ 213   3                      }
+ 214   2              } 
+ 215   1      }
+ 216          
+ 217          // 外部中断函数
+ 218          // 偶尔跳入 不需要函数精简 中断期间定时器可开也可关闭
+ 219          // 一旦有INT0:Mode的下降沿就会进入,进入后TimeSetting_Flag置1,进入调时状态
+ 220          void Int0_Routine() interrupt 0
+ 221          {
+ 222   1              TimeSetting_Flag = ~TimeSetting_Flag;
+ 223   1              if(TimeSetting_Flag){
+ 224   2                      Debug = 1;
+ 225   2              }
+ 226   1              else {
+ 227   2                      Debug = 0;
+ 228   2              }
+ 229   1      }
+ 230          
+ 231          // 定时器中断函数
+ 232          // 频繁跳入 需要中断函数精简
+ 233          void timer0() interrupt 1 using 1
+ 234          {
+ 235   1              static uchar count;
+ 236   1              TH0 = (65536-50000) / 256;
+ 237   1              TL0 = (65536-50000) % 256;              // 约0.05s溢出一次
+ 238   1              count++;
+ 239   1              
+ 240   1              if(count == 10) {
+C51 COMPILER V9.60.7.0   MAIN                                                              05/24/2025 22:04:12 PAGE 5   
+
+ 241   2                      if(Flag_SN_Yellow == 1)                 // 南北黄灯标志
+ 242   2                              SN_Yellow = ~SN_Yellow;
+ 243   2                      if(Flag_EW_Yellow == 1)                 // 东西黄灯标志
+ 244   2                              EW_Yellow = ~EW_Yellow;
+ 245   2              }
+ 246   1              if(count == 20) {                                               // 约1s
+ 247   2                      Time_EW--;
+ 248   2                      Time_SN--;
+ 249   2                      if(Flag_SN_Yellow == 1)                 // 南北黄灯标志
+ 250   2                              SN_Yellow = ~SN_Yellow;
+ 251   2                      if(Flag_EW_Yellow == 1)                 // 东西黄灯标志
+ 252   2                              EW_Yellow = ~EW_Yellow;
+ 253   2                      count = 0;
+ 254   2              }
+ 255   1      }
+ 256          
+ 257          // 新增串口中断服务函数
+ 258          void UART_ISR() interrupt 4 {
+ 259   1          if(RI) {
+ 260   2              RI = 0;                 // 清除接收中断标志
+ 261   2              UART_Data = SBUF;       // 获取接收数据
+ 262   2              
+ 263   2              // 根据接收数据设置标志位
+ 264   2              if(UART_Data == 'E') {
+ 265   3                  Emergency_Flag = 1;
+ 266   3                  P1 = S[9];
+ 267   3                  TR0 = 0;           // 暂停定时器
+ 268   3              }
+ 269   2              else if(UART_Data == 'N') {
+ 270   3                  Emergency_Flag = 0;
+ 271   3                  TR0 = 1;           // 恢复定时器
+ 272   3              }
+ 273   2          }
+ 274   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    780    ----
+   CONSTANT SIZE    =     20    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      8       8
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      5    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

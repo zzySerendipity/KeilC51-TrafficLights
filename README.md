@@ -1,7 +1,3 @@
-# KeilC51-TrafficLights
-十字路口交通灯51Proteus8平台仿真：红黄绿交替显示，黄灯3s倒计时闪烁。每个对向路口时间可调。紧急状态EMERGENCY 调时状态MODE 正常交通状态NORMAL
-
-
 《单片机原理及应用》课程作业
 
 Task：Traffic Lights 51仿真交通灯
